@@ -1,5 +1,7 @@
 ﻿using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Runtime.CompilerServices;
+[assembly: InternalsVisibleTo("AppCompatCacheParserOutputTest")]
 [assembly: AssemblyTrademark("Eric Zimmerman")]
 
 // Setting ComVisible to false makes the types in this assembly not visible 

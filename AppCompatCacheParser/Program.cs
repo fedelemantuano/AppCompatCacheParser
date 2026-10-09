@@ -3,22 +3,18 @@ using System.Collections.Generic;
 using System.CommandLine;
 using System.CommandLine.Help;
 using System.CommandLine.Invocation;
-using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Security.Principal;
 using System.Threading.Tasks;
-using AppCompatCache;
-using CsvHelper.TypeConversion;
 using Exceptionless;
 using Serilog;
 using Serilog.Core;
 using Serilog.Events;
 using ServiceStack;
 using ServiceStack.Text;
-using CsvWriter = CsvHelper.CsvWriter;
 
 namespace AppCompatCacheParser;
 
@@ -35,6 +31,8 @@ internal class Program
 
     private static readonly string Footer = @"Examples: AppCompatCacheParser.exe --csv c:\temp -t -c 2" + "\r\n\t " +
                                             @"   AppCompatCacheParser.exe --csv c:\temp --csvf results.csv" + "\r\n\t " +
+                                            @"   AppCompatCacheParser.exe -f C:\temp\SYSTEM --json C:\temp --jsonf results.json" + "\r\n\t " +
+                                            @"   AppCompatCacheParser.exe -f C:\temp\SYSTEM --csv C:\temp --json C:\temp" + "\r\n\t " +
                                             "\r\n\t" +
                                             "    Short options (single letter) are prefixed with a single dash. Long commands are prefixed with two dashes\r\n";
 
@@ -69,7 +67,7 @@ internal class Program
         var csvOpt = new Option<string>(
             "--csv")
         {
-            Description = "Directory to save CSV formatted results to. Be sure to include the full path in double quotes"
+            Description = "Directory to save CSV formatted results to. This or --json is required. Be sure to include the full path in double quotes"
         
         };
 
@@ -77,6 +75,16 @@ internal class Program
             "--csvf")
         {
             Description   = "File name to save CSV formatted results to. When present, overrides default name\r\n"
+        };
+
+        var jsonOpt = new Option<string>("--json")
+        {
+            Description = "Directory to save JSON Lines formatted results to. This or --csv is required. Be sure to include the full path in double quotes"
+        };
+
+        var jsonfOpt = new Option<string>("--jsonf")
+        {
+            Description = "File name to save JSON Lines formatted results to. When present, overrides default name"
         };
         
           
@@ -121,6 +129,8 @@ internal class Program
            fOpt,
            csvOpt,
            csvfOpt,
+           jsonOpt,
+           jsonfOpt,
            cOpt,
            tOpt,
           dtOpt,
@@ -132,16 +142,17 @@ internal class Program
         _rootCommand.Description = Header + "\r\n\r\n" + Footer;
 
         _rootCommand.SetAction(result => DoWork(result.GetValue(fOpt), result.GetValue(csvOpt), result.GetValue(csvfOpt),
+            result.GetValue(jsonOpt), result.GetValue(jsonfOpt),
             result.GetValue(cOpt), result.GetValue(tOpt), result.GetValue(dtOpt), result.GetValue(nlOpt),
             result.GetValue(debugOpt),result.GetValue(traceOpt)));
             
 
-        var foo = _rootCommand.Parse(args).InvokeAsync();
+        await _rootCommand.Parse(args).InvokeAsync();
         
         Log.CloseAndFlush();
     }
 
-    private static void DoWork(string f,string csv,string csvf,int c, bool t,string dt,bool nl,bool debug,bool trace)
+    private static void DoWork(string f,string csv,string csvf,string json,string jsonf,int c, bool t,string dt,bool nl,bool debug,bool trace)
     {
         var levelSwitch = new LoggingLevelSwitch();
 
@@ -165,10 +176,10 @@ internal class Program
       
         Log.Logger = conf.CreateLogger();
         
-        if (string.IsNullOrEmpty(csv))
+        if (string.IsNullOrEmpty(csv) && string.IsNullOrEmpty(json))
         {
             var aaa = new CustomHelpAction(new HelpAction());
-            aaa.Invoke(_rootCommand.Parse("--csv is required. Exiting"));
+            aaa.Invoke(_rootCommand.Parse("--csv or --json is required. Exiting"));
 
             return;
         }
@@ -236,49 +247,7 @@ internal class Program
                 outFileBase = $"{ts1}_{appCompat.OperatingSystem}_{Environment.MachineName}_AppCompatCache.csv";
             }
 
-            if (csvf.IsNullOrEmpty() == false)
-            {
-                outFileBase = Path.GetFileName(csvf);
-            }
-
-            if (Directory.Exists(csv) == false)
-            {
-                Directory.CreateDirectory(csv!);
-            }
-
-            var outFilename = Path.Combine(csv, outFileBase);
-
-            var sw = new StreamWriter(outFilename);
-            
-            var csvWriter = new CsvWriter(sw,CultureInfo.InvariantCulture);
-
-            var foo = csvWriter.Context.AutoMap<CacheEntry>();
-            var o = new TypeConverterOptions
-            {
-                DateTimeStyle = DateTimeStyles.AssumeUniversal & DateTimeStyles.AdjustToUniversal
-            };
-            csvWriter.Context.TypeConverterOptionsCache.AddOptions<CacheEntry>(o);
-
-            foo.Map(entry => entry.LastModifiedTimeUTC).Convert(entry=>entry.Value.LastModifiedTimeUTC.HasValue ? entry.Value.LastModifiedTimeUTC.Value.ToString(dt): "");
-
-            foo.Map(entry => entry.CacheEntrySize).Ignore();
-            foo.Map(entry => entry.Data).Ignore();
-            foo.Map(entry => entry.InsertFlags).Ignore();
-            foo.Map(entry => entry.DataSize).Ignore();
-            foo.Map(entry => entry.LastModifiedFILETIMEUTC).Ignore();
-            foo.Map(entry => entry.PathSize).Ignore();
-            foo.Map(entry => entry.Signature).Ignore();
-
-            foo.Map(entry => entry.ControlSet).Index(0);
-            foo.Map(entry => entry.CacheEntryPosition).Index(1);
-            foo.Map(entry => entry.Path).Index(2);
-            foo.Map(entry => entry.LastModifiedTimeUTC).Index(3);
-            foo.Map(entry => entry.Executed).Index(4);
-            foo.Map(entry => entry.Duplicate).Index(5);
-            foo.Map(entry => entry.SourceFile).Index(6);
-
-            csvWriter.WriteHeader<CacheEntry>();
-            csvWriter.NextRecord();
+            using var outputWriter = new CacheEntryOutputWriter(csv, csvf, json, jsonf, outFileBase, dt);
 
             Log.Debug("**** Found {Count} caches",appCompat.Caches.Count);
 
@@ -296,32 +265,14 @@ internal class Program
                         Log.Information(
                             "Found {Count:N0} cache entries for {OperatingSystem} in {ControlSet}",appCompatCach.Entries.Count,appCompat.OperatingSystem,$"ControlSet00{appCompatCach.ControlSet}");
 
-                        if (t)
+                        foreach (var cacheEntry in appCompatCach.Entries)
                         {
-                            foreach (var cacheEntry in appCompatCach.Entries)
-                            {
-                                cacheEntry.SourceFile = hiveToProcess;
-                                cacheEntry.Duplicate = cacheKeys.Contains(cacheEntry.GetKey());
+                            cacheEntry.SourceFile = hiveToProcess;
+                            cacheEntry.Duplicate = cacheKeys.Contains(cacheEntry.GetKey());
 
-                                cacheKeys.Add(cacheEntry.GetKey());
+                            cacheKeys.Add(cacheEntry.GetKey());
 
-                                csvWriter.WriteRecord(cacheEntry);
-                                csvWriter.NextRecord();
-                            }
-
-                        }
-                        else
-                        {
-                            foreach (var cacheEntry in appCompatCach.Entries)
-                            {
-                                cacheEntry.SourceFile = hiveToProcess;
-                                cacheEntry.Duplicate = cacheKeys.Contains(cacheEntry.GetKey());
-
-                                cacheKeys.Add(cacheEntry.GetKey());
-
-                                csvWriter.WriteRecord(cacheEntry);
-                                csvWriter.NextRecord();
-                            }
+                            outputWriter.WriteRecord(cacheEntry);
                         }
                     }
                     catch (Exception ex)
@@ -338,11 +289,17 @@ internal class Program
                         }
                     }
                 }
-                sw.Flush();
-                sw.Close();
+                outputWriter.Flush();
 
                 Console.WriteLine();
-                Log.Warning("Results saved to '{OutFilename}'",outFilename);
+                if (outputWriter.CsvPath != null)
+                {
+                    Log.Warning("Results saved to '{OutFilename}'",outputWriter.CsvPath);
+                }
+                if (outputWriter.JsonPath != null)
+                {
+                    Log.Warning("Results saved to '{OutFilename}'",outputWriter.JsonPath);
+                }
                 Console.WriteLine();
             }
             else

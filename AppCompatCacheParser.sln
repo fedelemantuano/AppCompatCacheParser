@@ -9,6 +9,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AppCompatCache", "AppCompat
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AppCompatCacheTest", "AppCompatCacheParserTest\AppCompatCacheTest.csproj", "{46FD0FC6-4166-434D-A415-456122E87009}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AppCompatCacheParserOutputTest", "AppCompatCacheParserOutputTest\AppCompatCacheParserOutputTest.csproj", "{91C07C83-DEB5-4559-A4D6-BA086738F095}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -27,6 +29,10 @@ Global
 		{46FD0FC6-4166-434D-A415-456122E87009}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{46FD0FC6-4166-434D-A415-456122E87009}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{46FD0FC6-4166-434D-A415-456122E87009}.Release|Any CPU.Build.0 = Release|Any CPU
+		{91C07C83-DEB5-4559-A4D6-BA086738F095}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{91C07C83-DEB5-4559-A4D6-BA086738F095}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{91C07C83-DEB5-4559-A4D6-BA086738F095}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{91C07C83-DEB5-4559-A4D6-BA086738F095}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
